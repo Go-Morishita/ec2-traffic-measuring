@@ -1,0 +1,31 @@
+#!/bin/bash
+set -euxo pipefail
+
+cat > /opt/http_test_server.py.b64 <<'PY_B64'
+${app_py_b64}
+PY_B64
+
+base64 -d /opt/http_test_server.py.b64 > /opt/http_test_server.py
+rm -f /opt/http_test_server.py.b64
+chmod 644 /opt/http_test_server.py
+
+cat > /etc/systemd/system/http-traffic-lab.service <<'UNIT'
+[Unit]
+Description=Simple HTTP traffic metrics lab server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=HTTP_PORT=${http_port}
+ExecStart=/usr/bin/python3 /opt/http_test_server.py
+Restart=always
+RestartSec=2
+User=root
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable --now http-traffic-lab.service
