@@ -1,0 +1,38 @@
+- name: Configure Docker virtual servers
+  hosts: virtual_servers
+  become: true
+
+  vars:
+    app_dir: /opt/traffic-app
+    app_port: 8000
+
+  tasks:
+    - name: Create application directory
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Copy Python HTTP server
+      ansible.builtin.copy:
+        src: ../app/main.py
+        dest: "{{ app_dir }}/main.py"
+        mode: "0644"
+
+    - name: Stop old HTTP server process if exists
+      ansible.builtin.shell: |
+        pkill -f "[p]ython3 {{ app_dir }}/main.py" || true
+      changed_when: false
+
+    - name: Start HTTP server
+      ansible.builtin.shell: |
+        nohup env HTTP_PORT={{ app_port }} python3 {{ app_dir }}/main.py \
+          > /var/log/traffic-app.log 2>&1 &
+      args:
+        chdir: "{{ app_dir }}"
+
+    - name: Wait for HTTP server
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: "{{ app_port }}"
+        timeout: 10

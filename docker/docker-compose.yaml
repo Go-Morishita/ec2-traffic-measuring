@@ -1,0 +1,48 @@
+services:
+  app1:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.virtual-server
+    container_name: traffic-app1
+    networks:
+      - traffic-net
+    ports:
+      - "2221:22"
+
+  app2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.virtual-server
+    container_name: traffic-app2
+    networks:
+      - traffic-net
+    ports:
+      - "2222:22"
+
+  app3:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.virtual-server
+    container_name: traffic-app3
+    networks:
+      - traffic-net
+    ports:
+      - "2223:22"
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: traffic-nginx
+    depends_on:
+      - app1
+      - app2
+      - app3
+    networks:
+      - traffic-net
+    ports:
+      - "${LOAD_BALANCER_PORT:-8080}:8080"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+
+networks:
+  traffic-net:
+    driver: bridge

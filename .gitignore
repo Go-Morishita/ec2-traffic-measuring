@@ -19,3 +19,7 @@ venv/
 
 # macOS
 .DS_Store
+
+# Ansible local SSH key for Docker containers
+ansible/ansible_container_key
+ansible/ansible_container_key.pub
