@@ -9,10 +9,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         print(
-            "%s - - [%s] %s"
+            "%s - - [%s] [server=%s] %s"
             % (
                 self.client_address[0],
                 self.log_date_time_string(),
+                self.server.app_server_name,
                 fmt % args,
             ),
             flush=True,
@@ -32,6 +33,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/octet-stream")
             self.send_header("Content-Length", str(size))
+            self.send_header("X-Served-By", self.server.app_server_name)
             self.end_headers()
 
             chunk = b"x" * (1024 * 1024)
@@ -41,11 +43,12 @@ class Handler(BaseHTTPRequestHandler):
 
             return
 
-        body = b"ok\n"
+        body = f"ok from {self.server.app_server_name}\n".encode()
 
         self.send_response(200)
         self.send_header("Content-Type", "text/plain")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("X-Served-By", self.server.app_server_name)
         self.end_headers()
         self.wfile.write(body)
 
@@ -70,6 +73,7 @@ class Handler(BaseHTTPRequestHandler):
         mbps = mb / elapsed
 
         self.send_response(204)
+        self.send_header("X-Served-By", self.server.app_server_name)
         self.send_header("X-Received-MB", f"{mb:.3f}")
         self.send_header("X-Receive-MBps", f"{mbps:.3f}")
         self.end_headers()
@@ -77,10 +81,15 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     port = int(os.environ.get("HTTP_PORT", "8000"))
+    server_name = os.environ.get("SERVER_NAME", "unknown")
 
     server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
+    server.app_server_name = server_name
 
-    print(f"HTTP traffic server is running on port {port}", flush=True)
+    print(
+        f"HTTP traffic server '{server_name}' is running on port {port}",
+        flush=True,
+    )
 
     server.serve_forever()
 

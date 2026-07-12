@@ -4,6 +4,8 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.virtual-server
     container_name: traffic-app1
+    environment:
+      SERVER_NAME: app1
     networks:
       - traffic-net
     ports:
@@ -14,6 +16,8 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.virtual-server
     container_name: traffic-app2
+    environment:
+      SERVER_NAME: app2
     networks:
       - traffic-net
     ports:
@@ -24,6 +28,8 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.virtual-server
     container_name: traffic-app3
+    environment:
+      SERVER_NAME: app3
     networks:
       - traffic-net
     ports:
