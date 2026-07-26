@@ -1,0 +1,74 @@
+- name: Create the project directories
+  ansible.builtin.file:
+    path: "{{ remote_project_dir }}/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop: [app, ansible, docker]
+
+# The build context mirrors the repository layout, because
+# Dockerfile.virtual-server refers to ansible/ansible_container_key.pub
+# relative to the repository root.
+- name: Copy the image build context
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../{{ item }}"
+    dest: "{{ remote_project_dir }}/{{ item }}"
+    mode: "0644"
+  loop:
+    - app/main.py
+    - ansible/ansible_container_key.pub
+    - docker/Dockerfile.virtual-server
+  register: build_context
+
+- name: Render docker-compose.yaml
+  ansible.builtin.template:
+    src: docker-compose.yaml.j2
+    dest: "{{ remote_project_dir }}/docker/docker-compose.yaml"
+    mode: "0644"
+
+- name: Render nginx.conf
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: "{{ remote_project_dir }}/docker/nginx.conf"
+    mode: "0644"
+  notify: Reload NGINX
+
+# Built once and shared by every app service: t4g.nano has 0.5 GB of RAM and no
+# swap, so parallel per-service builds risk an OOM.
+- name: Build the virtual server image
+  ansible.builtin.command:
+    cmd: docker build -t {{ app_image }} -f {{ remote_project_dir }}/docker/Dockerfile.virtual-server {{ remote_project_dir }}
+  changed_when: build_context.changed
+
+- name: Start the container fleet
+  ansible.builtin.command:
+    cmd: docker compose -f {{ remote_project_dir }}/docker/docker-compose.yaml up -d --remove-orphans
+  register: compose_up
+  changed_when: "'Started' in compose_up.stderr or 'Created' in compose_up.stderr"
+
+- name: Wait for each app container to accept SSH
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ app_ssh_base_port + item }}"
+    timeout: 60
+  loop: "{{ range(1, (app_count | int) + 1) | list }}"
+
+# Registers app1..appN as real Ansible hosts, reached by jumping through this
+# EC2 host. The private key never leaves the Mac.
+- name: Register the app containers as Ansible hosts
+  ansible.builtin.add_host:
+    name: "app{{ item }}"
+    groups: virtual_servers
+    ansible_host: 127.0.0.1
+    ansible_port: "{{ app_ssh_base_port + item }}"
+    ansible_user: ansible
+    ansible_ssh_private_key_file: "{{ playbook_dir }}/ansible_container_key"
+    ansible_python_interpreter: /usr/bin/python3
+    ansible_ssh_common_args: >-
+      -o StrictHostKeyChecking=no
+      -o UserKnownHostsFile=/dev/null
+      -o ProxyCommand="ssh -W %h:%p -q
+      -i {{ ec2_key }}
+      -o StrictHostKeyChecking=accept-new
+      {{ ec2_user }}@{{ ec2_host }}"
+  loop: "{{ range(1, (app_count | int) + 1) | list }}"
+  changed_when: false

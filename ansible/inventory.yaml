@@ -1,0 +1,24 @@
+all:
+  vars:
+    ec2_host: "{{ lookup('env', 'EC2_HOST') }}"
+    ec2_user: ec2-user
+    ec2_key: "~/.ssh/ec2-traffic-measuring"
+
+    app_count: 3
+    app_dir: /opt/traffic-app
+    app_port: 8000
+    lb_port: 8080
+    app_ssh_base_port: 2220
+
+    remote_project_dir: /opt/traffic-lab
+    app_image: traffic-virtual-server:latest
+
+  children:
+    ec2:
+      hosts:
+        traffic_lab:
+          ansible_host: "{{ ec2_host }}"
+          ansible_user: "{{ ec2_user }}"
+          ansible_ssh_private_key_file: "{{ ec2_key }}"
+          ansible_python_interpreter: /usr/bin/python3
+          ansible_ssh_common_args: -o StrictHostKeyChecking=accept-new

@@ -1,0 +1,57 @@
+# Requires ./scripts/bootstrap_ec2.sh to have been run once on the instance.
+#
+#   export EC2_HOST=$(terraform -chdir=ec2/terraform output -raw public_ip)
+#   ansible-playbook -i ansible/inventory.yaml ansible/ec2.yaml -e app_count=5
+
+- name: Provision the container fleet
+  hosts: ec2
+  become: true
+  gather_facts: false
+
+  pre_tasks:
+    - name: Fail early when EC2_HOST is not set
+      ansible.builtin.assert:
+        that: ec2_host | default('') | length > 0
+        fail_msg: >-
+          EC2_HOST is empty. Run:
+          export EC2_HOST=$(terraform -chdir=ec2/terraform output -raw public_ip)
+      delegate_to: localhost
+      become: false
+
+  roles:
+    - container_fleet
+
+- name: Configure the virtual servers
+  hosts: virtual_servers
+  become: true
+  gather_facts: false
+
+  roles:
+    - app_server
+
+- name: Verify the load balancer
+  hosts: ec2
+  gather_facts: false
+
+  tasks:
+    - name: Send requests through NGINX and collect the serving app names
+      ansible.builtin.shell: |
+        set -o pipefail
+        for _ in $(seq 1 {{ (app_count | int) * 3 }}); do
+          curl -sS -o /dev/null -D - http://127.0.0.1:{{ lb_port }}/ | awk 'tolower($1) == "x-served-by:" { print $2 }'
+        done | tr -d '\r' | sort | uniq -c
+      args:
+        executable: /bin/bash
+      register: lb_check
+      changed_when: false
+
+    - name: Show the round-robin distribution
+      ansible.builtin.debug:
+        msg: "{{ lb_check.stdout_lines }}"
+
+    - name: Fail if any app server never served a request
+      ansible.builtin.assert:
+        that: lb_check.stdout_lines | length == (app_count | int)
+        fail_msg: >-
+          Expected {{ app_count }} distinct app servers in the NGINX rotation,
+          got: {{ lb_check.stdout_lines }}

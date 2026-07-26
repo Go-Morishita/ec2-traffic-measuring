@@ -69,3 +69,88 @@ ansible-playbook -i ansible/inventory.ini ansible/playbook.yaml
 
 After setup, send HTTP requests to NGINX on `localhost:8080`; you do not need
 to use SSH again unless you want to reconfigure the app servers.
+
+## 3. The same architecture on EC2
+
+The EC2 deployment mirrors the local one: the same NGINX container balances the
+same app containers. Only the entry points differ.
+
+```text
+Mac (curl / hey) → EC2:8080 → nginx:8080 → app1..appN:8000
+Mac (ansible)    → EC2:22   → SSH jump   → 127.0.0.1:222N → container:22
+```
+
+The container SSH ports are bound to the EC2 host's loopback interface, so
+Ansible reaches them by jumping through the EC2 host. The security group only
+needs to open port `22` and port `8080`, and the container SSH key never leaves
+your Mac.
+
+### Division of responsibility
+
+| Layer | Tool | What it does |
+| --- | --- | --- |
+| VPC, subnet, security group, instance | Terraform | `ec2/terraform/` |
+| Docker, Compose, containers, application | Ansible | `ansible/playbook_ec2.yaml` |
+
+Terraform creates a plain, empty instance and stops there; it has no
+`user_data` at all. Everything above the operating system is Ansible's job, so
+you can rebuild the architecture in seconds without touching Terraform and
+without waiting for a new instance to boot.
+
+### Deploy
+
+```bash
+# 1. Provision the instance
+terraform -chdir=ec2/terraform apply
+
+# 2. Build the architecture on it
+export EC2_HOST=$(terraform -chdir=ec2/terraform output -raw public_ip)
+ansible-playbook -i ansible/inventory_ec2.yaml ansible/playbook_ec2.yaml
+```
+
+The SSH key at `ssh_public_key_path` has no passphrase, so neither Terraform
+nor Ansible needs `ssh-agent`. Terraform registers the public half with EC2,
+and the instance accepts it on first boot.
+
+The playbook ends by sending requests through NGINX and asserting that every
+app server appears in the rotation, so a successful run means the architecture
+is verified end to end.
+
+### Send traffic and read the metrics
+
+```bash
+curl -i "http://$EC2_HOST:8080/"
+hey -z 60s -c 20 "http://$EC2_HOST:8080/download?mb=1"
+```
+
+Then read `NetworkIn`, `NetworkOut`, `NetworkPacketsIn`, `NetworkPacketsOut`,
+`CPUUtilization`, and `CPUCreditBalance` under CloudWatch → EC2 → Per-Instance
+Metrics.
+
+### Changing the number of app servers
+
+`app_count` in `ansible/inventory_ec2.yaml` is the single knob. It drives the
+Compose file, the NGINX upstream list, and the SSH port assignments, all of
+which are rendered from templates in `ansible/templates/`:
+
+```bash
+ansible-playbook -i ansible/inventory_ec2.yaml ansible/playbook_ec2.yaml -e app_count=5
+```
+
+This is the variable the ML autoscaling experiment is meant to optimise: too
+many containers wastes the instance, too few cannot absorb the traffic.
+
+> `t4g.nano` has 0.5 GB of RAM, which is enough for the default three app
+> servers but leaves little room to scale up. If the image build or the
+> containers run out of memory, set `instance_type = "t4g.small"` in
+> `ec2/terraform/terraform.tfvars` and re-apply.
+
+### If your home IP changes
+
+The security group only admits `my_ip_cidr`. When your IP changes, SSH and HTTP
+both hang:
+
+```bash
+curl -s https://checkip.amazonaws.com   # update my_ip_cidr in terraform.tfvars
+terraform -chdir=ec2/terraform apply    # updates the security group in place
+```

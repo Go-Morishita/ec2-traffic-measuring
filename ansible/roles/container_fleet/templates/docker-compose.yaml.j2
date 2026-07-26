@@ -1,0 +1,37 @@
+{{ ansible_managed | comment }}
+# roles/container_fleet/templates/docker-compose.yaml.j2, app_count={{ app_count }}
+
+services:
+{% for i in range(1, (app_count | int) + 1) %}
+  app{{ i }}:
+    image: {{ app_image }}
+    container_name: traffic-app{{ i }}
+    hostname: app{{ i }}
+    environment:
+      SERVER_NAME: app{{ i }}
+    networks:
+      - traffic-net
+    # Loopback only: Ansible reaches these through an SSH jump via the EC2 host.
+    ports:
+      - "127.0.0.1:{{ app_ssh_base_port + i }}:22"
+    restart: unless-stopped
+
+{% endfor %}
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: traffic-nginx
+    depends_on:
+{% for i in range(1, (app_count | int) + 1) %}
+      - app{{ i }}
+{% endfor %}
+    networks:
+      - traffic-net
+    ports:
+      - "{{ lb_port }}:8080"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    restart: unless-stopped
+
+networks:
+  traffic-net:
+    driver: bridge

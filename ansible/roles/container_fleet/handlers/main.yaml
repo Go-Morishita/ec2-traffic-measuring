@@ -1,0 +1,4 @@
+- name: Reload NGINX
+  ansible.builtin.command:
+    cmd: docker exec traffic-nginx nginx -s reload
+  changed_when: true
