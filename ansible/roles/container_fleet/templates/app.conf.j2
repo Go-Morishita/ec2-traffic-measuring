@@ -1,0 +1,21 @@
+{{ ansible_managed | comment }}
+
+upstream app_servers {
+{% for i in range(1, (app_count | int) + 1) %}
+    server app{{ i }}:{{ app_port }};
+{% endfor %}
+}
+
+server {
+    listen 8080;
+
+    location / {
+        proxy_pass http://app_servers;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+
+        proxy_request_buffering off;
+        client_max_body_size 0;
+    }
+}

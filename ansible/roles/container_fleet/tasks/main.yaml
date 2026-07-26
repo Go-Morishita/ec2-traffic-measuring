@@ -3,7 +3,7 @@
     path: "{{ remote_project_dir }}/{{ item }}"
     state: directory
     mode: "0755"
-  loop: [app, ansible, docker]
+  loop: [app, ansible, docker, docker/nginx-conf.d]
 
 # The build context mirrors the repository layout, because
 # Dockerfile.virtual-server refers to ansible/ansible_container_key.pub
@@ -25,10 +25,10 @@
     dest: "{{ remote_project_dir }}/docker/docker-compose.yaml"
     mode: "0644"
 
-- name: Render nginx.conf
+- name: Render the NGINX site config
   ansible.builtin.template:
-    src: nginx.conf.j2
-    dest: "{{ remote_project_dir }}/docker/nginx.conf"
+    src: app.conf.j2
+    dest: "{{ remote_project_dir }}/docker/nginx-conf.d/app.conf"
     mode: "0644"
   notify: Reload NGINX
 
