@@ -73,9 +73,9 @@ resource "aws_security_group" "this" {
   }
 
   ingress {
-    description = "HTTP test server from my IP"
-    from_port   = var.http_port
-    to_port     = var.http_port
+    description = "NGINX load balancer from my IP"
+    from_port   = var.lb_port
+    to_port     = var.lb_port
     protocol    = "tcp"
     cidr_blocks = [var.my_ip_cidr]
   }
@@ -93,15 +93,6 @@ resource "aws_security_group" "this" {
   }
 }
 
-locals {
-  app_py_b64 = base64encode(file("${path.module}/../src/main.py"))
-
-  user_data = templatefile("${path.module}/user_data.sh.tftpl", {
-    app_py_b64 = local.app_py_b64
-    http_port  = var.http_port
-  })
-}
-
 resource "aws_instance" "this" {
   ami                         = data.aws_ssm_parameter.al2023_arm64.value
   instance_type               = var.instance_type
@@ -110,9 +101,6 @@ resource "aws_instance" "this" {
   key_name                    = aws_key_pair.this.key_name
   associate_public_ip_address = true
   monitoring                  = var.enable_detailed_monitoring
-
-  user_data                   = local.user_data
-  user_data_replace_on_change = true
 
   root_block_device {
     volume_type           = "gp3"

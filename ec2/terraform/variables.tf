@@ -1,3 +1,9 @@
+variable "aws_profile" {
+  description = "AWS CLI profile to use. This project lives in account 890742577378, which is the 'personal' profile, not the default one."
+  type        = string
+  default     = "personal"
+}
+
 variable "aws_region" {
   description = "AWS region to deploy into. us-east-1 is usually cheap; ap-northeast-1 gives Japan-like latency."
   type        = string
@@ -32,10 +38,10 @@ variable "ssh_public_key_path" {
   default     = "~/.ssh/id_ed25519.pub"
 }
 
-variable "http_port" {
-  description = "HTTP test server port."
+variable "lb_port" {
+  description = "Host port the NGINX load balancer container publishes. This is the only HTTP entry point; the app containers stay on the internal Docker network."
   type        = number
-  default     = 8000
+  default     = 8080
 }
 
 variable "root_volume_size_gb" {

@@ -10,22 +10,27 @@ output "public_ip" {
 
 output "ssh_command" {
   description = "SSH command."
-  value       = "ssh ec2-user@${aws_instance.this.public_ip}"
+  value       = "ssh -i ${trimsuffix(var.ssh_public_key_path, ".pub")} ec2-user@${aws_instance.this.public_ip}"
 }
 
 output "health_check_url" {
-  description = "HTTP health check URL."
-  value       = "http://${aws_instance.this.public_ip}:${var.http_port}/"
+  description = "HTTP health check URL, served through NGINX."
+  value       = "http://${aws_instance.this.public_ip}:${var.lb_port}/"
 }
 
 output "upload_url" {
   description = "HTTP upload endpoint for POST load tests."
-  value       = "http://${aws_instance.this.public_ip}:${var.http_port}/upload"
+  value       = "http://${aws_instance.this.public_ip}:${var.lb_port}/upload"
 }
 
 output "download_url" {
   description = "HTTP download endpoint. Use ?mb=1, ?mb=10, etc."
-  value       = "http://${aws_instance.this.public_ip}:${var.http_port}/download?mb=1"
+  value       = "http://${aws_instance.this.public_ip}:${var.lb_port}/download?mb=1"
+}
+
+output "ansible_command" {
+  description = "Command to configure the instance with Ansible."
+  value       = "EC2_HOST=${aws_instance.this.public_ip} ansible-playbook -i ansible/inventory_ec2.yaml ansible/playbook_ec2.yaml"
 }
 
 output "cloudwatch_metric_hint" {
